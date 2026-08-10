@@ -1,0 +1,158 @@
+const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/';
+
+const video = document.getElementById('webcam');
+const canvas = document.getElementById('overlay');
+const statusBadge = document.getElementById('status-badge');
+const readout = document.getElementById('detection-readout');
+const enrollForm = document.getElementById('enrollment-form');
+const targetListUI = document.getElementById('target-list');
+const targetCountUI = document.getElementById('target-count');
+
+let labeledDescriptors = [];
+let faceMatcher = null;
+let lastAnnouncedPerson = '';
+let lastAnnouncementTime = 0;
+
+// Speech synthesis function for Marvel JARVIS-like voice alerts
+function speak(text) {
+  const now = Date.now();
+  // Prevent repeating speech within 4 seconds
+  if (text === lastAnnouncedPerson && now - lastAnnouncementTime < 4000) return;
+  
+  window.speechSynthesis.cancel(); // Stop current audio
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.pitch = 0.9;
+  utterance.rate = 1.0;
+  window.speechSynthesis.speak(utterance);
+
+  lastAnnouncedPerson = text;
+  lastAnnouncementTime = now;
+}
+
+// 1. Load ML models and initiate camera request
+async function initApp() {
+  readout.innerText = "LOADING AI RECOGNITION MODELS...";
+  try {
+    await Promise.all([
+      faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
+      faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+      faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+    ]);
+    
+    statusBadge.innerText = "MODELS LOADED";
+    statusBadge.className = "status active";
+    readout.innerText = "REQUESTING CAMERA PERMISSION...";
+    
+    startCamera();
+  } catch (err) {
+    console.error("Initialization error: ", err);
+    readout.innerText = "ERROR LOADING MODELS OR CAMERA.";
+  }
+}
+
+// 2. Access user camera stream
+async function startCamera() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: {} });
+    video.srcObject = stream;
+    readout.innerText = "CAMERA ONLINE. READY FOR ENROLLMENT & SCANNING.";
+    speak("Biometric scanner online. Ready for target recognition.");
+  } catch (err) {
+    readout.innerText = "CAMERA ACCESS DENIED OR UNAVAILABLE.";
+    alert("Camera permission is required for real-time identification.");
+  }
+}
+
+// 3. Process image upload for dynamic face enrollment
+enrollForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const nameInput = document.getElementById('person-name').value.trim();
+  const fileInput = document.getElementById('person-image').files[0];
+
+  if (!fileInput || !nameInput) return;
+
+  readout.innerText = `PROCESSING ENROLLMENT FOR: ${nameInput}...`;
+  
+  const img = await faceapi.bufferToImage(fileInput);
+  const detection = await faceapi.detectSingleFace(img)
+    .withFaceLandmarks()
+    .withFaceDescriptor();
+
+  if (!detection) {
+    readout.innerText = `ERROR: NO FACE DETECTED IN IMAGE FOR ${nameInput}.`;
+    speak("Enrollment failed. Face not detected in image.");
+    return;
+  }
+
+  // Save descriptors
+  const descriptor = new faceapi.LabeledFaceDescriptors(nameInput, [detection.descriptor]);
+  labeledDescriptors.push(descriptor);
+  faceMatcher = new faceapi.FaceMatcher(labeledDescriptors, 0.6);
+
+  // Update UI
+  const li = document.createElement('li');
+  li.innerText = `✓ ${nameInput}`;
+  targetListUI.appendChild(li);
+  targetCountUI.innerText = labeledDescriptors.length;
+
+  readout.innerText = `TARGET ENROLLED: ${nameInput.toUpperCase()}`;
+  speak(`Target ${nameInput} enrolled successfully.`);
+
+  enrollForm.reset();
+});
+
+// 4. Continuous Real-time Detection Loop
+video.addEventListener('play', () => {
+  const displaySize = { width: video.videoWidth || 640, height: video.videoHeight || 480 };
+  faceapi.matchDimensions(canvas, displaySize);
+
+  setInterval(async () => {
+    if (video.paused || video.ended) return;
+
+    const detections = await faceapi.detectAllFaces(video)
+      .withFaceLandmarks()
+      .withFaceDescriptors();
+
+    const resizedDetections = faceapi.resizeResults(detections, displaySize);
+    
+    // Clear previous frames
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (resizedDetections.length === 0) {
+      readout.innerText = "SCANNING FOR TARGETS...";
+      return;
+    }
+
+    resizedDetections.forEach(detection => {
+      let label = 'Unknown Subject';
+      
+      if (faceMatcher) {
+        const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
+        label = bestMatch.toString();
+      }
+
+      const box = detection.detection.box;
+      
+      // Draw Marvel Sci-Fi style visual bounding box
+      ctx.strokeStyle = label.includes('unknown') ? '#ff2a2a' : '#00f0ff';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(box.x, box.y, box.width, box.height);
+
+      ctx.fillStyle = label.includes('unknown') ? '#ff2a2a' : '#00f0ff';
+      ctx.font = '16px Segoe UI';
+      ctx.fillText(label.toUpperCase(), box.x, box.y > 20 ? box.y - 10 : 20);
+
+      if (!label.includes('unknown')) {
+        const detectedName = label.split(' ')[0];
+        readout.innerText = `TARGET IDENTIFIED: ${detectedName.toUpperCase()}`;
+        speak(`Target identified: ${detectedName}`);
+      } else {
+        readout.innerText = "UNIDENTIFIED SUBJECT DETECTED.";
+      }
+    });
+  }, 200);
+});
+
+// Execute setup
+window.addEventListener('DOMContentLoaded', initApp);

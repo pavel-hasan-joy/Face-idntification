@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>S.H.I.E.L.D. Biometric Scanner</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
+  <script defer src="script.js"></script>
+</head>
+<body>
+  <div class="hud-container">
+    <header class="hud-header">
+      <div class="logo">S.H.I.E.L.D. BIOMETRIC IDENTIFIER</div>
+      <div id="status-badge" class="status warning">INITIALIZING AI...</div>
+    </header>
+
+    <main class="main-content">
+      <section class="panel control-panel">
+        <h2>Target Database Enrollment</h2>
+        <form id="enrollment-form">
+          <div class="input-group">
+            <label for="person-name">Target Name:</label>
+            <input type="text" id="person-name" placeholder="e.g. Tony Stark" required />
+          </div>
+          
+          <div class="input-group">
+            <label for="person-image">Reference Image (JPG/PNG):</label>
+            <input type="file" id="person-image" accept="image/*" required />
+          </div>
+
+          <button type="submit" id="enroll-btn">Enroll Target</button>
+        </form>
+
+        <div class="enrolled-list-container">
+          <h3>Enrolled Targets (<span id="target-count">0</span>)</h3>
+          <ul id="target-list"></ul>
+        </div>
+      </section>
+
+      <section class="panel camera-panel">
+        <div class="viewport-wrapper">
+          <video id="webcam" autoplay muted playsinline></video>
+          <canvas id="overlay"></canvas>
+          <div class="scan-line"></div>
+          <div class="hud-corners">
+            <span class="corner top-left"></span>
+            <span class="corner top-right"></span>
+            <span class="corner bottom-left"></span>
+            <span class="corner bottom-right"></span>
+          </div>
+        </div>
+        <div id="detection-readout" class="readout">AWAITING CAMERA ACCESS...</div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>
